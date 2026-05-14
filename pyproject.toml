@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "unpacklm"
+version = "0.1.0"
+description = "UNPACK: Unified Path Attribution through Component Keys — tokens, paths, and circuits from a single decomposition."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [
+    {name = "Po-Kai Chen", email = "pokaichen.ai@gmail.com"},
+]
+keywords = [
+    "mechanistic-interpretability",
+    "transformers",
+    "circuit-discovery",
+    "attribution",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "torch>=2.0",
+    "numpy>=1.24",
+    "transformers>=4.36",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pandas"]
+experiments = ["datasets", "h5py", "matplotlib"]
+
+[project.urls]
+Homepage = "https://github.com/Fun-Cry/unpacklm"
+
+[tool.setuptools.packages.find]
+where = ["src"]

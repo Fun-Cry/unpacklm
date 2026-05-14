@@ -1,0 +1,21 @@
+# Build
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+
+# Results (large JSON + logs)
+results/
+
+# Model caches
+*.pt
+*.bin
+*.safetensors
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
