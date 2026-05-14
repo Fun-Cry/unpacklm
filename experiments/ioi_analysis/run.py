@@ -73,7 +73,7 @@ COMPOSITION_CLAIMS = [
 
 def load_ioi_prompts(tokenizer, n_prompts=100, seed=42):
     from utils.load_data import load_ioi_dataset
-    from experiments.circuit_discovery.ioi.prompts import _resolve_positions
+    from experiments.circuits.ioi_utils import resolve_positions
 
     # Over-generate: ~50% of names are multi-token and get filtered
     ds = load_ioi_dataset(target=n_prompts * 3, seed=seed)
@@ -81,7 +81,7 @@ def load_ioi_prompts(tokenizer, n_prompts=100, seed=42):
     eos = tokenizer.eos_token or "<|endoftext|>"
     prompts = []
     for d in raw:
-        roles = _resolve_positions(d["prompt"], d["IO"], d["S"], tokenizer)
+        roles = resolve_positions(d["prompt"], d["IO"], d["S"], tokenizer)
         if roles is None or "IO" not in roles or "S2" not in roles:
             continue
         positions = {k: v + 1 for k, v in roles.items()}  # +1 for <eos> prefix

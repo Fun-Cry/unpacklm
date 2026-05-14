@@ -52,7 +52,7 @@ class TraceConfig:
             return None
         if self.branch_weights is not None:
             return self.branch_weights
-        return {"K": 0.3, "Q": 0.3, "V": 0.4}
+        return {"K": 0.333, "Q": 0.333, "V": 0.333}
 
     def __post_init__(self):
         if self.branches not in ("k", "kqv"):
