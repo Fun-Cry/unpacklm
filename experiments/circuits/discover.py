@@ -14,7 +14,7 @@ from collections import defaultdict
 from typing import Dict, List
 
 import unpack
-from experiments.circuits.ioi_utils import resolve_positions, make_lens
+from experiments.circuits.ioi_utils import resolve_positions, make_lens, parse_step
 from utils.load_data import load_ioi_with_abc
 
 
@@ -42,10 +42,30 @@ def discover_one(tracer, prompt_dict, config, top_paths_k, lens_cfg):
         config=config,
     )
 
-    # Lens filter on paths
-    lens_fn = make_lens(lens_cfg, prompt_dict.get("metadata", {}))
+    # Filter to paths where every position is task-relevant
+    interested = set()
+    meta = prompt_dict.get("metadata", {})
+    for key in ["io_position", "s1_position", "s2_position", "end_position"]:
+        v = meta.get(key)
+        if v is not None:
+            interested.add(int(v))
+
+    relevant_paths = []
+    for p in result.paths:
+        steps = [s.strip() for s in p.chain.split("\u2192")]
+        positions = set()
+        for step in steps:
+            _, pos = parse_step(step)
+            if pos >= 0:
+                positions.add(pos)
+        positions.add(p.source_pos)
+        if positions.issubset(interested):
+            relevant_paths.append(p)
+
+    # Lens filter on relevant paths
+    lens_fn = make_lens(lens_cfg, meta)
     kept = []
-    for p in result.paths[:top_paths_k * 5]:
+    for p in relevant_paths[:top_paths_k * 5]:
         steps = [s.strip() for s in p.chain.split("\u2192")]
         if not lens_fn(steps, p.source_pos):
             continue
@@ -54,10 +74,10 @@ def discover_one(tracer, prompt_dict, config, top_paths_k, lens_cfg):
     kept.sort(key=lambda x: abs(x["score"]), reverse=True)
     kept = kept[:top_paths_k]
 
-    # Component ranking from all paths (pre-filter)
+    # Component ranking from relevant paths
     cum = defaultdict(float)
     npaths = defaultdict(int)
-    for p in result.paths:
+    for p in relevant_paths:
         s = abs(p.score)
         for name in p.components:
             if name in ("embedding", "pos_embedding"):

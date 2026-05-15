@@ -1,11 +1,9 @@
-"""Step 2: Select — partition-coverage selection.
+"""Step 2: Select — partition-coverage selection (Wang-faithful).
 
-Groups paths by fingerprint (role-set × branch-profile), filters
-partitions by mass share, within each partition filters chains by
-prompt frequency and elbow, takes union of surviving components.
+Groups paths by fingerprint (role-set × branch-profile), within each
+kept partition filters by occurrence and elbows on cumulative score.
 
-Usage:
-    python -m experiments.circuits.select results/circuits/gpt2_default
+Defaults: partition_threshold=0 (keep all), min_prompt_fraction=0.15.
 """
 
 import argparse
@@ -16,9 +14,8 @@ import re
 from collections import defaultdict
 from typing import Dict, FrozenSet, List, Set, Tuple
 
-from experiments.circuits.ioi_utils import parse_step, chain_components
+from experiments.circuits.ioi_utils import parse_step
 
-# IOI role mapping: metadata field → role label
 IOI_ROLE_KEYS = [
     ("io_position", "IO"),
     ("s1_position", "S1"),
@@ -32,14 +29,11 @@ SKIP_ROLE_SETS = {frozenset(), frozenset(["END"])}
 _BRANCH_RE = re.compile(r"\[([KQV])\]")
 
 
-# ── Helpers ──
-
 def _strip_tag(name):
     return _BRANCH_RE.sub("", name)
 
 
 def _branch_profile(chain) -> Tuple[str, ...]:
-    """Tuple of K/Q/V tags along the chain (excluding terminal step)."""
     tags = []
     for step in chain[:-1]:
         m = _BRANCH_RE.search(step)
@@ -49,7 +43,6 @@ def _branch_profile(chain) -> Tuple[str, ...]:
 
 
 def _role_for_pos(metadata, pos, role_keys):
-    """Return role label for a position, or None."""
     for field, label in role_keys:
         v = metadata.get(field)
         if v is not None and int(v) == int(pos):
@@ -58,7 +51,6 @@ def _role_for_pos(metadata, pos, role_keys):
 
 
 def _fingerprint(chain, metadata, role_keys):
-    """(frozenset of roles touched, branch profile tuple)."""
     roles = set()
     for step in chain:
         _, pos = parse_step(step)
@@ -76,7 +68,6 @@ def _fmt_fp(fp):
 
 
 def _normalized_chain(chain, role_map):
-    """Replace @pos with @role_label for cross-prompt grouping."""
     out = []
     for step in chain:
         name, pos = parse_step(step)
@@ -86,7 +77,6 @@ def _normalized_chain(chain, role_map):
 
 
 def _elbow_index(shares):
-    """Max-perpendicular-distance elbow on concave cumulative curve."""
     if len(shares) < 3:
         return len(shares)
     cum = []
@@ -95,15 +85,13 @@ def _elbow_index(shares):
         s += v
         cum.append(s)
     n = len(cum)
-    x0, y0 = 0.0, 0.0
     xN, yN = float(n), cum[-1]
-    dx, dy = xN - x0, yN - y0
-    denom = (dx * dx + dy * dy) ** 0.5
+    denom = (xN ** 2 + yN ** 2) ** 0.5
     if denom == 0:
         return 0
     best_d, best_k = -1.0, 0
     for i, c in enumerate(cum, start=1):
-        d = abs(dy * i - dx * c + (dx * y0 - dy * x0)) / denom
+        d = abs(yN * i - xN * c) / denom
         if d > best_d:
             best_d, best_k = d, i
     if best_d < 0.02:
@@ -111,11 +99,8 @@ def _elbow_index(shares):
     return best_k
 
 
-# ── Loading ──
-
 def load_prompts(results_dir):
-    cfg_path = os.path.join(results_dir, "run_config.json")
-    with open(cfg_path) as f:
+    with open(os.path.join(results_dir, "run_config.json")) as f:
         cfg = json.load(f)
     prompts = []
     for path in sorted(glob.glob(os.path.join(results_dir, "prompt_*.json"))):
@@ -128,24 +113,19 @@ def filter_correct(prompts, p_min=0.3):
     return [p for p in prompts if p.get("clean_target_prob", 0) >= p_min]
 
 
-# ── Main selection logic ──
-
 def select_circuit(prompts, role_keys=IOI_ROLE_KEYS,
                    exclude=DEFAULT_EXCLUDE,
-                   partition_threshold=0.05,
-                   min_prompt_fraction=0.25,
-                   elbow_rescue=True,
+                   partition_threshold=0.0,
+                   min_prompt_fraction=0.15,
                    elbow_floor_k=1):
-    """Partition-coverage selection. Returns dict with 'circuit' and diagnostics."""
 
     n_prompts = len(prompts)
     min_prompts_floor = max(1, int(round(min_prompt_fraction * n_prompts)))
 
-    # 1. Aggregate paths by fingerprint
+    # Aggregate paths by fingerprint
     by_fp = defaultdict(list)
     for prompt in prompts:
         meta = prompt.get("metadata", {})
-        # Build role_map for this prompt
         role_map = {}
         for field, label in role_keys:
             v = meta.get(field)
@@ -155,47 +135,31 @@ def select_circuit(prompts, role_keys=IOI_ROLE_KEYS,
         for path in prompt.get("ranked_paths", []):
             chain = path["chain"]
             fp = _fingerprint(chain, meta, role_keys)
-            comps = tuple(_strip_tag(c) for c in chain_components(chain)
-                          if _strip_tag(c) not in exclude)
+            comps = tuple(_strip_tag(parse_step(s)[0]) for s in chain
+                          if _strip_tag(parse_step(s)[0]) not in exclude)
             norm = _normalized_chain(chain, role_map)
             by_fp[fp].append({
                 "prompt": prompt["prompt"],
                 "score": float(path["score"]),
-                "chain": tuple(chain),
                 "normalized_chain": norm,
                 "components": comps,
             })
 
-    # 2. Partition-level filtering
     fp_total = {fp: sum(abs(r["score"]) for r in paths)
                 for fp, paths in by_fp.items()}
     kept_fps = [fp for fp in by_fp if fp[0] not in SKIP_ROLE_SETS]
     kept_total = sum(fp_total[fp] for fp in kept_fps)
-
     fp_share = {fp: (fp_total[fp] / kept_total if kept_total > 0 else 0)
                 for fp in kept_fps}
 
     above = sorted([fp for fp in kept_fps if fp_share[fp] >= partition_threshold],
                    key=lambda fp: -fp_share[fp])
-    below = sorted([fp for fp in kept_fps if fp_share[fp] < partition_threshold],
-                   key=lambda fp: -fp_share[fp])
 
-    rescued = []
-    if elbow_rescue and below:
-        below_shares = [fp_share[fp] for fp in below]
-        k = _elbow_index(below_shares)
-        rescued = below[:k]
-
-    kept_partitions = above + rescued
-
-    # 3. Within-partition selection
     circuit = set()
     partition_info = []
 
-    for fp in kept_partitions:
+    for fp in above:
         paths = by_fp[fp]
-
-        # Group by normalized chain
         buckets = {}
         for p in paths:
             norm = p["normalized_chain"]
@@ -210,10 +174,9 @@ def select_circuit(prompts, role_keys=IOI_ROLE_KEYS,
 
         chain_list = list(buckets.values())
         n_total = len(chain_list)
-
-        # Occurrence filter
         after_occ = [c for c in chain_list
                      if len(c["prompts"]) >= min_prompts_floor]
+
         if not after_occ:
             partition_info.append({
                 "fingerprint": _fmt_fp(fp), "share": fp_share[fp],
@@ -221,14 +184,13 @@ def select_circuit(prompts, role_keys=IOI_ROLE_KEYS,
                 "n_chains_kept": 0, "components": []})
             continue
 
-        # Elbow within partition
         after_occ.sort(key=lambda c: -c["abs_score"])
         total_score = sum(c["abs_score"] for c in after_occ)
         shares = [c["abs_score"] / total_score for c in after_occ] if total_score > 0 else []
         eidx = _elbow_index(shares) if shares else 0
         eidx = max(eidx, min(elbow_floor_k, len(after_occ)))
-
         kept = after_occ[:eidx]
+
         for c in kept:
             for comp in c["components"]:
                 circuit.add(comp)
@@ -239,7 +201,6 @@ def select_circuit(prompts, role_keys=IOI_ROLE_KEYS,
             "n_chains_total": n_total,
             "n_chains_after_occ": len(after_occ),
             "n_chains_kept": len(kept),
-            "n_components": len(set().union(*(set(c["components"]) for c in kept))),
             "components": sorted(set().union(*(set(c["components"]) for c in kept))),
             "kept_chains": [{
                 "chain": " → ".join(c["chain"]),
@@ -247,27 +208,6 @@ def select_circuit(prompts, role_keys=IOI_ROLE_KEYS,
                 "share": c["abs_score"] / total_score if total_score > 0 else 0,
                 "n_prompts": len(c["prompts"]),
             } for c in kept[:10]],
-        })
-
-    # All-partition table for diagnostics
-    rescued_set = set(rescued)
-    above_set = set(above)
-    all_parts = []
-    for fp in sorted(by_fp.keys(), key=lambda f: -fp_total[f]):
-        if fp[0] in SKIP_ROLE_SETS:
-            status = "skipped"
-        elif fp in above_set:
-            status = "kept"
-        elif fp in rescued_set:
-            status = "rescued"
-        else:
-            status = "below_thresh"
-        all_parts.append({
-            "fingerprint": _fmt_fp(fp),
-            "n_paths": len(by_fp[fp]),
-            "total_mass": fp_total[fp],
-            "share": fp_share.get(fp, 0),
-            "status": status,
         })
 
     circuit_list = sorted(circuit)
@@ -279,10 +219,7 @@ def select_circuit(prompts, role_keys=IOI_ROLE_KEYS,
             "partition_threshold": partition_threshold,
             "min_prompt_fraction": min_prompt_fraction,
             "min_prompts_floor": min_prompts_floor,
-            "elbow_rescue": elbow_rescue,
-            "elbow_floor_k": elbow_floor_k,
         },
-        "all_partitions": all_parts,
         "kept_partitions": partition_info,
     }
 
@@ -291,9 +228,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("results_dir")
     ap.add_argument("--p-min", type=float, default=0.3)
-    ap.add_argument("--partition-threshold", type=float, default=0.05)
-    ap.add_argument("--min-prompt-fraction", type=float, default=0.25)
-    ap.add_argument("--no-elbow-rescue", action="store_true")
+    ap.add_argument("--partition-threshold", type=float, default=0.0)
+    ap.add_argument("--min-prompt-fraction", type=float, default=0.15)
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
@@ -309,26 +245,18 @@ def main():
         prompts,
         partition_threshold=args.partition_threshold,
         min_prompt_fraction=args.min_prompt_fraction,
-        elbow_rescue=not args.no_elbow_rescue,
     )
 
-    # Print partition table
-    print(f"\n  partition table:")
-    print(f"  {'fingerprint':<22s} {'#paths':>7}  {'mass':>9}  {'share':>6}  {'status'}")
-    for row in result["all_partitions"]:
-        print(f"  {row['fingerprint']:<22s} {row['n_paths']:>7}  "
-              f"{row['total_mass']:>9.1f}  {row['share']*100:>5.1f}%  {row['status']}")
-
-    # Print kept partitions
     for part in result["kept_partitions"]:
-        print(f"\n  ── {part['fingerprint']} ({part['share']*100:.1f}%) ──")
-        print(f"     chains: {part['n_chains_total']} → "
-              f"{part['n_chains_after_occ']} after occ → "
-              f"{part['n_chains_kept']} kept")
+        if part["n_chains_kept"] == 0:
+            continue
+        print(f"\n  ── {part['fingerprint']} ({part['share']*100:.1f}%) "
+              f"{part['n_chains_total']} → "
+              f"{part['n_chains_after_occ']} → "
+              f"{part['n_chains_kept']} ──")
         for c in part.get("kept_chains", [])[:5]:
             print(f"     {c['share']*100:>5.1f}%  {c['n_prompts']:>3} prompts  {c['chain']}")
-        if part.get("components"):
-            print(f"     components: {part['components']}")
+        print(f"     components: {part['components']}")
 
     print(f"\n  circuit ({result['n_components']} components):")
     for name in result["circuit"]:
