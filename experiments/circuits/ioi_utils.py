@@ -1,16 +1,24 @@
-"""IOI-specific utilities: position resolution, chain parsing, lenses.
-
-Inlined from the old circuit_discovery package to remove that dependency.
-"""
+"""IOI-specific utilities: position resolution, chain parsing, ABC references."""
 
 import re
 from typing import Dict, List, Optional, Set, Tuple
 
+_STEP_RE = re.compile(r"^(.+?)@(-?\d+)$")
+_BRANCH_RE = re.compile(r"\[([KQV])\]")
+
+# IOI role mapping: metadata field → role label
+ROLE_KEYS = [
+    ("io_position",   "IO"),
+    ("s1_position",   "S1"),
+    ("s1p1_position", "S1p1"),
+    ("s2_position",   "S2"),
+    ("end_position",  "END"),
+]
+
+DEFAULT_EXCLUDE = {"embedding", "pos_embedding"}
+
 
 # ── Chain parsing ──
-
-_STEP_RE = re.compile(r"^(.+?)@(-?\d+)$")
-
 
 def parse_step(step: str) -> Tuple[str, int]:
     """'attn_9_head_9[K]@14' → ('attn_9_head_9[K]', 14)"""
@@ -20,26 +28,40 @@ def parse_step(step: str) -> Tuple[str, int]:
     return (m.group(1), int(m.group(2)))
 
 
-def chain_positions(chain: List[str]) -> List[int]:
+def chain_positions(chain) -> List[int]:
     return [parse_step(s)[1] for s in chain]
 
 
-def chain_components(chain: List[str]) -> List[str]:
+def chain_components(chain) -> List[str]:
     return [parse_step(s)[0] for s in chain]
 
 
-# ── IOI position resolution ──
+def strip_branch_tag(name: str) -> str:
+    return _BRANCH_RE.sub("", name)
+
+
+def step_branch_tag(step: str) -> Optional[str]:
+    m = _BRANCH_RE.search(step)
+    return m.group(1) if m else None
+
+
+def chain_branch_profile(chain) -> Tuple[str, ...]:
+    tags = []
+    for step in chain[:-1]:
+        b = step_branch_tag(step)
+        if b is not None:
+            tags.append(b)
+    return tuple(tags)
+
+
+# ── Position resolution ──
 
 def resolve_positions(prompt: str, io_token: str, s_token: str,
                       tokenizer) -> Optional[Dict[str, int]]:
-    """Resolve IO/S1/S2/END token positions for one IOI prompt.
-
-    Returns {"IO": 1, "S1": 2, "S2": 8, "END": 13} or None
-    if names are multi-token.
-    """
+    """Resolve IO/S1/S2/END token positions for one IOI prompt."""
     ids = tokenizer.encode(prompt, add_special_tokens=False)
 
-    def both_ids(s: str):
+    def both_ids(s):
         s_stripped = s.lstrip()
         spaced = tokenizer.encode(" " + s_stripped, add_special_tokens=False)
         bare = tokenizer.encode(s_stripped, add_special_tokens=False)
@@ -52,7 +74,7 @@ def resolve_positions(prompt: str, io_token: str, s_token: str,
     if io_set is None or s_set is None:
         return None
 
-    out: Dict[str, int] = {}
+    out = {}
     s_count = 0
     for i, tid in enumerate(ids):
         if tid in io_set and "IO" not in out:
@@ -64,58 +86,63 @@ def resolve_positions(prompt: str, io_token: str, s_token: str,
     return out
 
 
-# ── Lens filters ──
+def role_for_pos(metadata: dict, pos: int, role_keys=ROLE_KEYS) -> Optional[str]:
+    """Which role label (IO/S1/S2/END) does position `pos` have?"""
+    for field, label in role_keys:
+        v = metadata.get(field)
+        if v is not None and int(v) == int(pos):
+            return label
+    return None
 
-def _all_positions(chain: List[str], src_pos: Optional[int]) -> Set[int]:
-    """All positions visited by a path: chain @-annotations + src_pos."""
+
+# ── Diversity lens ──
+
+def diversity_filter(chain, src_pos, min_positions: int = 2) -> bool:
+    """Keep paths visiting at least N distinct positions."""
     positions = set(chain_positions(chain))
     if src_pos is not None:
         positions.add(int(src_pos))
-    return positions
+    return len(positions) >= min_positions
 
 
-def lens_membership(chain, src_pos, *, target_positions: Set[int]) -> bool:
-    """Keep paths visiting at least one target position."""
-    if not target_positions:
-        return False
-    return any(p in target_positions for p in _all_positions(chain, src_pos))
+# ── Prompt loading ──
 
+def load_ioi_prompts(tokenizer, n_prompts=100, seed=42):
+    """Load IOI prompts with BOS prefix and position metadata including S1+1."""
+    from utils.load_data import load_ioi_dataset
 
-def lens_diversity(chain, src_pos, *, min_positions: int) -> bool:
-    """Keep paths visiting at least N distinct positions."""
-    return len(_all_positions(chain, src_pos)) >= min_positions
+    ds = load_ioi_dataset(target=n_prompts * 3, seed=seed)
+    raw = ds.metadata
+    eos = tokenizer.eos_token or "<|endoftext|>"
 
-
-def lens_length(chain, src_pos, *, min_hops: int) -> bool:
-    """Keep paths with at least N hops."""
-    return len(chain) >= min_hops
-
-
-def make_lens(lens_cfg: dict, prompt_metadata: dict):
-    """Build a (chain, src_pos) → bool filter from config + prompt metadata.
-
-    lens_cfg["type"]: "membership" | "diversity" | "length" | "none"
-    """
-    typ = lens_cfg.get("type", "membership")
-
-    if typ == "none":
-        return lambda chain, src_pos: True
-
-    if typ == "membership":
-        key = lens_cfg.get("positions_from_metadata", "target_positions")
-        positions = prompt_metadata.get(key, [])
-        target = set(int(p) for p in positions)
-        return lambda chain, src_pos: lens_membership(
-            chain, src_pos, target_positions=target)
-
-    if typ == "diversity":
-        min_pos = lens_cfg.get("min_positions", 2)
-        return lambda chain, src_pos: lens_diversity(
-            chain, src_pos, min_positions=min_pos)
-
-    if typ == "length":
-        min_h = lens_cfg.get("min_hops", 3)
-        return lambda chain, src_pos: lens_length(
-            chain, src_pos, min_hops=min_h)
-
-    raise ValueError(f"Unknown lens type: {typ}")
+    prompts = []
+    for d in raw:
+        roles = resolve_positions(d["prompt"], d["IO"], d["S"], tokenizer)
+        if roles is None or "IO" not in roles or "S2" not in roles:
+            continue
+        # +1 for BOS prefix
+        positions = {k: v + 1 for k, v in roles.items()}
+        s1p1 = positions["S1"] + 1 if "S1" in positions else None
+        prompts.append({
+            "prompt": eos + d["prompt"],
+            "target_token": d["IO"],
+            "distractor_token": d["S"],
+            "template_type": d.get("template_type", ""),
+            "IO": d["IO"],
+            "S": d["S"],
+            "metadata": {
+                "io_position": positions["IO"],
+                "s1_position": positions.get("S1"),
+                "s1p1_position": s1p1,
+                "s2_position": positions.get("S2"),
+                "end_position": positions["END"],
+                "target_positions": [
+                    positions["IO"],
+                    positions.get("S1", positions["IO"]),
+                    positions.get("S2", positions["IO"]),
+                ],
+            },
+        })
+        if len(prompts) >= n_prompts:
+            break
+    return prompts

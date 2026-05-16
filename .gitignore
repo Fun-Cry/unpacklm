@@ -19,3 +19,5 @@ results/
 
 # OS
 .DS_Store
+
+*.ipynb

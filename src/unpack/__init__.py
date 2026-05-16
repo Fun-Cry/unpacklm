@@ -21,7 +21,8 @@ Three levels of output:
 
 See also:
     tracer.trace()     — single-prompt attribution
-    tracer.discover()  — multi-prompt circuit discovery (coming soon)
+    unpack.discover()  — multi-prompt circuit discovery
+    unpack.discover_one() — single-prompt circuit discovery
     tracer.verify()    — circuit verification via ablation (coming soon)
     unpack.validate()  — adapter contract validation
 """
@@ -31,6 +32,7 @@ __version__ = "0.1.0"
 from unpack.tracer import Tracer
 from unpack.result import TraceResult, Path
 from unpack.circuit import Circuit
+from unpack.discover import discover, discover_one
 from unpack.config import TraceConfig, PRESETS
 from unpack.validate import validate
 from unpack.tasks.ioi import ioi_roles, WANG_CIRCUIT_HEADS
@@ -38,6 +40,9 @@ from unpack.tasks.ioi import ioi_roles, WANG_CIRCUIT_HEADS
 __all__ = [
     # Main entry point
     "Tracer",
+    # Discovery
+    "discover",
+    "discover_one",
     # Output types
     "TraceResult",
     "Path",
