@@ -145,9 +145,9 @@ def _run_flow_sweep(
             if abs(imp_s) < 1e-14:
                 continue
 
-            w_K = bw.get("K", 0.3) if has_kd else 0.0
-            w_Q = bw.get("Q", 0.3) if has_qd else 0.0
-            w_V = bw.get("V", 0.4) if has_vd else 0.0
+            w_K = bw.get("K", 0.333) if has_kd else 0.0
+            w_Q = bw.get("Q", 0.333) if has_qd else 0.0
+            w_V = bw.get("V", 0.333) if has_vd else 0.0
 
             # K-branch
             if has_kd and w_K > 0.0:
