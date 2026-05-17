@@ -1,18 +1,19 @@
 # %% Load results
-import json, glob
+import json, glob, os
 import numpy as np
 
 data = {}
-for path in sorted(glob.glob("results/ioi_scaling/*.json")):
+for path in sorted(glob.glob("results/ioi_scaling/*.jsonl")):
+    name = os.path.basename(path).replace(".jsonl", "")
+    tag, config = name.split("_", 1)
     with open(path) as f:
-        d = json.load(f)
-    tag = d["model"].split("/")[-1].replace("-deduped", "")
-    key = f"{tag}/{d['config']}"
-    data[key] = d
-    print(f"{key}: {d['n_prompts']} prompts")
+        recs = [json.loads(line) for line in f]
+    key = f"{tag}/{config}"
+    data[key] = {"model": tag, "config": config, "n_prompts": len(recs), "records": recs}
+    print(f"{key}: {len(recs)} prompts")
 
 # %% Cross-scale summary
-print(f"{'model/config':<35} {'logit_diff':>10} {'IO_prob':>8} {'IO_credit':>10} {'IO>S1':>6} {'IO>S2':>6} {'IO_top1':>8}")
+print(f"\n{'model/config':<35} {'logit_diff':>10} {'IO_prob':>8} {'IO_credit':>10} {'IO>S1':>6} {'IO>S2':>6} {'IO_top1':>8}")
 for key, d in data.items():
     recs = d["records"]
     ld = np.mean([r["logit_diff"] for r in recs])
@@ -23,13 +24,12 @@ for key, d in data.items():
     io_top1 = np.mean([np.argmax(r["credit_all"]) == r["io_pos"] for r in recs])
     print(f"{key:<35} {ld:>+10.3f} {prob:>8.3f} {cr_io:>+10.1f}% {io_gt_s1:>6.0%} {io_gt_s2:>6.0%} {io_top1:>8.0%}")
 
-# %% Within-model: credit_io vs logit_diff scatter (one per model, best config)
+# %% Within-model scatter: credit_io vs logit_diff (best config per model)
 import matplotlib.pyplot as plt
 
-# Group by model, pick best config by IO>S1
 models = {}
 for key, d in data.items():
-    tag = d["model"].split("/")[-1].replace("-deduped", "")
+    tag = d["model"]
     recs = d["records"]
     io_gt_s1 = np.mean([r["credit_io"] > r["credit_s1"] for r in recs])
     if tag not in models or io_gt_s1 > models[tag][1]:
