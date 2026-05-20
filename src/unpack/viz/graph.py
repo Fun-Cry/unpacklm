@@ -96,6 +96,21 @@ class CircuitGraph:
 
     # ── Path management ──
 
+    # Shared palette for auto-coloring
+    _palette = [
+        "#4a7fb5",  # steel blue
+        "#d4804e",  # warm terra
+        "#6aab73",  # sage green
+        "#8b6dae",  # soft purple
+        "#c75a5a",  # muted rose
+        "#4aada1",  # teal
+        "#c4953a",  # golden
+        "#7a8b99",  # slate
+    ]
+
+    def _next_color(self):
+        return self._palette[len(self.paths) % len(self._palette)]
+
     def add_path(self, path, color: str = None, label: str = None):
         """Add a path (unpack.Path or raw chain string).
 
@@ -111,6 +126,9 @@ class CircuitGraph:
             chain_str = path.chain
             score = path.score
 
+        if color is None:
+            color = self._next_color()
+
         hops = self._parse_chain(chain_str)
         vp = VisPath(
             chain=chain_str, hops=hops, score=score,
@@ -120,14 +138,9 @@ class CircuitGraph:
         return self
 
     def add_paths(self, paths, colors=None):
-        """Add multiple paths. Auto-assigns colors from a palette."""
-        palette = [
-            "#e74c3c", "#3498db", "#2ecc71", "#f39c12",
-            "#9b59b6", "#1abc9c", "#e67e22", "#34495e",
-            "#e84393", "#0984e3", "#00b894", "#fdcb6e",
-        ]
+        """Add multiple paths."""
         for i, p in enumerate(paths):
-            color = colors[i] if colors else palette[i % len(palette)]
+            color = colors[i] if colors else None
             self.add_path(p, color=color)
         return self
 
@@ -230,6 +243,22 @@ class CircuitGraph:
         html = self.render_html(**kwargs)
         with open(path, "w") as f:
             f.write(html)
+
+    def render_tikz(self, standalone: bool = True, **kwargs) -> str:
+        """Render paths as TikZ.
+        
+        Args:
+            standalone: if True, full compilable .tex document.
+                       if False, just pc colors + tikzpicture for \\input{}.
+        """
+        from unpack.viz.render_tikz import render_tikz
+        return render_tikz(self.to_dict(), standalone=standalone, **kwargs)
+
+    def save_tikz(self, path: str, **kwargs):
+        """Render and save to a .tex file."""
+        tikz = self.render_tikz(**kwargs)
+        with open(path, "w") as f:
+            f.write(tikz)
 
     # ── Internal ──
 

@@ -24,7 +24,7 @@ def render_html(graph: "CircuitGraph", width=900, height=None) -> str:
 <html><head><meta charset="utf-8">
 <style>
 * {{ box-sizing: border-box; }}
-body {{ margin: 0; background: #fafafa; font-family: 'Inter', 'SF Pro Text', -apple-system, sans-serif; }}
+body {{ margin: 0; background: #ffffff; font-family: 'Inter', 'SF Pro Text', -apple-system, sans-serif; }}
 .circuit-svg {{ display: block; margin: 20px auto; }}
 .stream {{ stroke: #e8e8e8; stroke-width: 2.5; stroke-linecap: round; }}
 .stream-arrow {{ fill: #ddd; }}
@@ -103,22 +103,52 @@ usedColors.forEach(c => {{
 }});
 
 // Background
-svg.appendChild(mkSvg("rect", {{ width: W, height: H, fill: "#fafafa", rx: 0 }}));
+svg.appendChild(mkSvg("rect", {{ width: W, height: H, fill: "#ffffff", rx: 0 }}));
 
 // ── Compute component positions ──
 const compInfo = {{}};
 const posMaxL = {{}}, posMinL = {{}};
 positions.forEach(p => {{ posMaxL[p] = -1; posMinL[p] = numLayers; }});
 
+// First pass: collect siblings per (layer, position)
+const layerPosComps = {{}};
+const seenFirst = new Set();
+DATA.paths.forEach(path => path.hops.forEach(h => {{
+  const key = h.component + "@" + h.position;
+  if (seenFirst.has(key) || posToCol[h.position] === undefined) return;
+  seenFirst.add(key);
+  const isEmb = h.component === "embedding" || h.component === "pos_embedding";
+  const li = isEmb ? -1 : h.layer;
+  const lpKey = li + ":" + h.position;
+  if (!layerPosComps[lpKey]) layerPosComps[lpKey] = [];
+  layerPosComps[lpKey].push(key);
+}}));
+
+// Second pass: assign positions with deck-of-cards stacking
+// Small left offset per sibling — arrows connect to each card's cx
+const CARD_OFFSET = 22;
 DATA.paths.forEach(path => path.hops.forEach(h => {{
   const key = h.component + "@" + h.position;
   if (compInfo[key] || posToCol[h.position] === undefined) return;
   const col = posToCol[h.position];
   const sx = xOf(col), cy = yOf(h.layer);
   const isEmb = h.component === "embedding" || h.component === "pos_embedding";
-  const cx = isEmb ? sx : sx - BRANCH;
+  let cx;
+  if (isEmb) {{
+    const lpKey = "-1:" + h.position;
+    const siblings = layerPosComps[lpKey] || [key];
+    const idx = siblings.indexOf(key);
+    cx = sx - CARD_OFFSET * idx;
+  }} else {{
+    const li = h.layer;
+    const lpKey = li + ":" + h.position;
+    const siblings = layerPosComps[lpKey] || [key];
+    const idx = siblings.indexOf(key);
+    cx = sx - BRANCH - CARD_OFFSET * idx;
+  }}
   compInfo[key] = {{ cx, cy, sx, inY: cy + DETOUR, outY: cy - DETOUR, isEmb,
-    isAttn: h.component.startsWith("attn_"), comp: h.component, pos: h.position }};
+    isAttn: h.component.startsWith("attn_"), comp: h.component, pos: h.position,
+    sibIdx: isEmb ? (layerPosComps["-1:" + h.position] || [key]).indexOf(key) : (layerPosComps[h.layer + ":" + h.position] || [key]).indexOf(key) }};
   const li = Math.floor(h.layer);
   if (li > posMaxL[h.position]) posMaxL[h.position] = li;
   if (li < posMinL[h.position]) posMinL[h.position] = li;
@@ -223,11 +253,12 @@ positions.forEach((pos, i) => {{
   const cx = xOf(i);
   let tok = "";
   if (DATA.tokens && DATA.tokens[pos]) tok = DATA.tokens[pos].replace(/\\u0120/g," ").trim().slice(0,14);
-  svg.appendChild(mkText(cx, H-26, tok, {{ "text-anchor":"middle", fill:"#555", "font-size":"11px", "font-weight":"600" }}));
-  svg.appendChild(mkText(cx, H-12, "pos "+pos, {{ "text-anchor":"middle", fill:"#bbb", "font-size":"8px" }}));
+  const embY = yOf(-1);
+  svg.appendChild(mkText(cx, embY + BOX_H/2 + 16, tok, {{ "text-anchor":"middle", fill:"#555", "font-size":"11px", "font-weight":"600" }}));
+  svg.appendChild(mkText(cx, embY + BOX_H/2 + 28, "pos "+pos, {{ "text-anchor":"middle", fill:"#bbb", "font-size":"8px" }}));
   if (i < positions.length-1 && positions[i+1]-pos > 1) {{
     const mx = (xOf(i)+xOf(i+1))/2;
-    svg.appendChild(mkText(mx, H-26, "\\u22ef", {{ "text-anchor":"middle", fill:"#ddd", "font-size":"11px" }}));
+    svg.appendChild(mkText(mx, embY + BOX_H/2 + 16, "\\u22ef", {{ "text-anchor":"middle", fill:"#ddd", "font-size":"11px" }}));
   }}
 }});
 
@@ -323,20 +354,32 @@ if (DATA.root && rootInfo) {{
 
 // ── Component boxes ──
 const COLORS = {{
-  attn:  {{ fill: "#fdf0f0", stroke: "#d08080", text: "#a05050", stubStroke: "#d0a0a0" }},
-  mlp:   {{ fill: "#f0f0fd", stroke: "#8080d0", text: "#5050a0", stubStroke: "#a0a0d0" }},
-  emb:   {{ fill: "#f4f4f4", stroke: "#b0b0b0", text: "#777", stubStroke: "#bbb" }},
-  ghost: {{ fill: "#fdf8f8", stroke: "#d0a0a0", text: "#c09090", stubStroke: "#d0b0b0" }},
-  root:  {{ fill: "#fde8e8", stroke: "#c06060", text: "#903030", stubStroke: "#c08080" }},
+  attn:  {{ fill: "#e8f0fa", stroke: "#5080c0", text: "#304878", stubStroke: "#80a0d0" }},
+  mlp:   {{ fill: "#fdf5e6", stroke: "#c8a030", text: "#806820", stubStroke: "#d8c060" }},
+  emb:   {{ fill: "#f4f4f4", stroke: "#b0b0b0", text: "#666", stubStroke: "#bbb" }},
+  ghost: {{ fill: "#edf2fa", stroke: "#80a0d0", text: "#8098b8", stubStroke: "#a0b8d8" }},
+  root:  {{ fill: "#dce8f8", stroke: "#3060a0", text: "#1a3868", stubStroke: "#5080c0" }},
 }};
 
-function drawComp(cx, cy, comp, type, isRoot) {{
+function drawComp(cx, cy, comp, type, isRoot, sibIdx) {{
   const c = isRoot ? COLORS.root : COLORS[type];
   const sw = isRoot ? 2 : 1;
   svg.appendChild(mkSvg("rect", {{ x:cx-BOX_W/2, y:cy-BOX_H/2, width:BOX_W, height:BOX_H,
     rx:6, fill:c.fill, stroke:c.stroke, "stroke-width":sw, filter:"url(#sh)" }}));
-  svg.appendChild(mkText(cx, cy+4, shortName(comp),
-    {{ "text-anchor":"middle", fill:c.text, "font-size":"9px", "font-weight":"600" }}));
+  if (sibIdx === 0) {{
+    // Foreground card: full label centered
+    svg.appendChild(mkText(cx, cy+4, shortName(comp),
+      {{ "text-anchor":"middle", fill:c.text, "font-size":"9px", "font-weight":"600" }}));
+  }} else {{
+    // Background card: short label on visible left edge
+    let edgeLabel = shortName(comp);
+    const hm = comp.match(/head_(\\d+)/);
+    if (hm) edgeLabel = "H" + hm[1];
+    const mm = comp.match(/mlp_(\\d+)/);
+    if (mm) edgeLabel = "M" + mm[1];
+    svg.appendChild(mkText(cx - BOX_W/2 + 4, cy+4, edgeLabel,
+      {{ "text-anchor":"start", fill:c.text, "font-size":"8px", "font-weight":"600" }}));
+  }}
 }}
 
 function drawCurvedStub(sx, sy, cx, cy, stroke, direction) {{
@@ -357,10 +400,13 @@ function drawCurvedStub(sx, sy, cx, cy, stroke, direction) {{
   svg.appendChild(mkSvg("circle", {{ cx:sx, cy:sy, r:1.8, fill:stroke, class:"stub-dot" }}));
 }}
 
-Object.entries(compInfo).forEach(([key, info]) => {{
+// Draw components: background cards (high sibIdx) first, foreground (sibIdx=0) last
+Object.entries(compInfo)
+  .sort((a, b) => (b[1].sibIdx || 0) - (a[1].sibIdx || 0))
+  .forEach(([key, info]) => {{
   const type = info.isEmb ? "emb" : info.isAttn ? "attn" : "mlp";
   const isRoot = DATA.root && info.comp === DATA.root;
-  drawComp(info.cx, info.cy, info.comp, type, isRoot);
+  drawComp(info.cx, info.cy, info.comp, type, isRoot, info.sibIdx || 0);
 }});
 
 // Ghost boxes (box only, no stubs)
@@ -373,6 +419,18 @@ Object.entries(ghosts).forEach(([gk, g]) => {{
 }});
 
 // ── Paths with curved connections ──
+// Track placed mode labels to avoid overlap
+const placedModes = {{}}; // "comp@pos" -> [{{mode, x, y}}]
+function getModeOffset(compKey, mode) {{
+  if (!placedModes[compKey]) placedModes[compKey] = [];
+  const existing = placedModes[compKey];
+  // Already placed this mode? Return null to skip
+  if (existing.some(m => m.mode === mode)) return null;
+  const offset = existing.length * 11;
+  existing.push({{ mode }});
+  return offset;
+}}
+
 const pathGroups = [];
 DATA.paths.forEach((path, pi) => {{
   const color = path.color || "#c0392b";
@@ -414,11 +472,14 @@ DATA.paths.forEach((path, pi) => {{
           d:`M${{iHi.sx+hiOff}},${{hiInY}} Q${{iHi.sx+hiOff}},${{iHi.cy+BOX_H/2}} ${{iHi.cx+hiOff}},${{iHi.cy+BOX_H/2}}`,
           ...a, "marker-end":"url(#arr-"+safe+")" }}));
       }}
-      // Mode tag
+      // Mode tag (deduplicated)
       if (hi.mode) {{
-        g.appendChild(mkText(iHi.cx-BOX_W/2-4, iHi.cy+BOX_H/2+hiOff, hi.mode,
-          {{ "text-anchor":"end", fill:color, "font-size":"8px", "font-weight":"700",
-             opacity:Math.min(op+0.2,1), class:"mode-label" }}));
+        const moff = getModeOffset(kHi, hi.mode);
+        if (moff !== null) {{
+          g.appendChild(mkText(iHi.cx-BOX_W/2-4, iHi.cy-BOX_H/2+4+moff, hi.mode,
+            {{ "text-anchor":"end", fill:color, "font-size":"8px", "font-weight":"700",
+               opacity:0.7, class:"mode-label" }}));
+        }}
       }}
     }} else {{
       // Cross-position via ghost
@@ -438,12 +499,16 @@ DATA.paths.forEach((path, pi) => {{
         g.appendChild(mkSvg("line", {{ class:"path-seg ghost-link",
           x1:ghost.cx+BOX_W/2, y1:ghost.cy+glOff, x2:iHi.cx-BOX_W/2, y2:iHi.cy+glOff,
           ...a, "marker-end":"url(#arr-"+safe+")" }}));
-        // Mode label centered on the horizontal
+        // Mode label (deduplicated)
         if (hi.mode) {{
-          const mx = (ghost.cx+BOX_W/2+iHi.cx-BOX_W/2)/2;
-          g.appendChild(mkText(mx, ghost.cy+glOff-6, hi.mode,
-            {{ "text-anchor":"middle", fill:color, "font-size":"8px", "font-weight":"700",
-               opacity:Math.min(op+0.2,1), class:"mode-label" }}));
+          const crossKey = hi.component+"@"+hi.position+"_from_"+lo.position;
+          const moff = getModeOffset(crossKey, hi.mode);
+          if (moff !== null) {{
+            const mx = (ghost.cx+BOX_W/2+iHi.cx-BOX_W/2)/2;
+            g.appendChild(mkText(mx, ghost.cy-BOX_H/2-4-moff, hi.mode,
+              {{ "text-anchor":"middle", fill:color, "font-size":"8px", "font-weight":"700",
+                 opacity:0.7, class:"mode-label" }}));
+          }}
         }}
       }}
     }}

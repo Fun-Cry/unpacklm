@@ -1,0 +1,60 @@
+% path_figure_preamble.tex
+% Add to paper preamble: \input{path_figure_preamble}
+% Then each figure: \resizebox{\textwidth}{!}{\input{figures/attn_9_head_9_Q_0.tex}}
+
+% Required tikz libraries (add if not already loaded)
+% \usetikzlibrary{arrows.meta, calc, positioning, backgrounds,
+%   fit, shapes.geometric, fadings, decorations.markings}
+
+% Component colors
+\definecolor{attnFill}{RGB}{218,231,246}
+\definecolor{attnHi}{RGB}{234,241,251}
+\definecolor{attnStroke}{RGB}{90,133,192}
+\definecolor{attnText}{RGB}{46,74,120}
+\definecolor{mlpFill}{RGB}{250,240,216}
+\definecolor{mlpHi}{RGB}{254,248,236}
+\definecolor{mlpStroke}{RGB}{200,160,48}
+\definecolor{mlpText}{RGB}{122,100,32}
+\definecolor{embFill}{RGB}{234,234,234}
+\definecolor{embHi}{RGB}{245,245,245}
+\definecolor{embStroke}{RGB}{170,170,170}
+\definecolor{embText}{RGB}{96,96,96}
+\definecolor{ghostFill}{RGB}{230,236,245}
+\definecolor{ghostStroke}{RGB}{138,164,204}
+\definecolor{ghostText}{RGB}{136,152,184}
+\definecolor{tgtFill}{RGB}{238,232,248}
+\definecolor{tgtHi}{RGB}{248,244,255}
+\definecolor{tgtStroke}{RGB}{136,120,168}
+\definecolor{tgtText}{RGB}{88,72,160}
+\definecolor{shCol}{RGB}{200,200,204}
+\definecolor{ruleG}{RGB}{232,232,232}
+\definecolor{labG}{RGB}{187,187,187}
+\definecolor{layG}{RGB}{204,204,204}
+\definecolor{tokC}{RGB}{72,72,72}
+\definecolor{posC}{RGB}{176,176,176}
+
+% TikZ styles
+\tikzset{
+  cb/.style={minimum width=1.8cm, minimum height=0.62cm,
+    rounded corners=3pt, inner sep=0pt, line width=0.5pt,
+    font=\sffamily\scriptsize\bfseries, align=center},
+  cs/.style={minimum width=1.8cm, minimum height=0.62cm,
+    rounded corners=3pt, fill=shCol, opacity=0.22},
+  atn/.style={cb, top color=attnHi, bottom color=attnFill,
+    draw=attnStroke, text=attnText},
+  mlp/.style={cb, top color=mlpHi, bottom color=mlpFill,
+    draw=mlpStroke, text=mlpText},
+  emb/.style={cb, top color=embHi, bottom color=embFill,
+    draw=embStroke, text=embText},
+  gho/.style={cb, fill=ghostFill, draw=ghostStroke,
+    text=ghostText, dash pattern=on 2.5pt off 1.8pt,
+    draw opacity=0.55, text opacity=0.7},
+  tgt/.style={cb, top color=tgtHi, bottom color=tgtFill,
+    draw=tgtStroke, text=tgtText, line width=0.7pt},
+  ll/.style={font=\sffamily\scriptsize, text=layG, anchor=east},
+  tl/.style={font=\sffamily\small\bfseries, text=tokC, anchor=north},
+  pl/.style={font=\sffamily\tiny, text=posC, anchor=north},
+  mt/.style={font=\sffamily\tiny\bfseries, opacity=0.8},
+  ar/.style={-{Stealth[length=3.5pt, width=2.8pt]}},
+  dar/.style={ar, dash pattern=on 4pt off 2.5pt},
+}

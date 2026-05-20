@@ -358,34 +358,97 @@ def main():
     comp_results = {}
 
     for config in args.configs:
-        # Resolve config to see actual flags
-        from unpack.config import get_config
-        cfg = get_config(config)
-        print(f"\n{'─' * 60}")
-        print(f"  Config: {config}")
-        print(f"    branches={cfg.branches}  mlp_rule={cfg.mlp_rule}  "
-              f"aligned={cfg.aligned}")
-        print(f"    enable_q={cfg.enable_q_side}  enable_v={cfg.enable_v_side}  "
-              f"outproj={cfg.aligned}")
-        print(f"{'─' * 60}")
+        token_results[config] = []
+        comp_results[config] = []
 
-        tok_records = []
-        comp_records = []
+    from unpack.config import get_config
+    cfgs = {c: get_config(c) for c in args.configs}
 
-        for i, p in enumerate(tqdm(prompts, desc=f"  {config}")):
-            tok_rec, comp_recs = process_prompt(
-                tracer, p, config, top_k=args.top_k,
-                do_tokens=do_tok, do_composition=do_comp,
-                verbose_first=(i == 0),
-            )
-            if tok_rec:
-                tok_records.append(tok_rec)
-            comp_records.extend(comp_recs)
+    for i, p in enumerate(tqdm(prompts, desc="  prompts")):
+        # One forward pass per prompt (kqv_aligned is superset)
+        prep, _ = tracer.prepare(
+            p["text"], target=p["target"],
+            distractor=p["distractor"], config="kqv_aligned",
+        )
 
-        if tok_records:
-            token_results[config] = tok_records
-        if comp_records:
-            comp_results[config] = comp_records
+        if i == 0:
+            print(f"    [prep] q_decomp={prep.get('query_decomp') is not None}  "
+                  f"v_decomp={prep.get('value_decomp') is not None}  "
+                  f"attn_outproj={prep.get('attn_shares_outproj') is not None}  "
+                  f"mlp_outproj={prep.get('mlp_outproj') is not None}  "
+                  f"mlp_geva={prep.get('mlp_geva') is not None}")
+
+        positions = p["positions"]
+
+        for config in args.configs:
+            cfg = cfgs[config]
+
+            # Token attribution
+            if do_tok:
+                result = tracer.trace_from_prep(prep, cfg, root=None)
+                attr = result.token_attribution
+                io_attr = float(attr[positions["IO"]])
+                s1_attr = float(attr[positions["S1"]])
+                s2_attr = float(attr[positions["S2"]])
+                top1_pos = int(np.argmax(attr))
+                attr_no_bos = attr.copy()
+                attr_no_bos[0] = -float('inf')
+                top1_no_bos = int(np.argmax(attr_no_bos))
+
+                token_results[config].append({
+                    "io_attr": io_attr, "s1_attr": s1_attr, "s2_attr": s2_attr,
+                    "io_gt_s1": io_attr > s1_attr,
+                    "io_gt_s2": io_attr > s2_attr,
+                    "io_is_top1": top1_pos == positions["IO"],
+                    "io_is_top1_no_bos": top1_no_bos == positions["IO"],
+                    "target_prob": result.target_prob,
+                    "io_token": p["metadata"]["io_token"],
+                    "s_token": p["metadata"]["s_token"],
+                })
+
+            # Composition
+            if do_comp:
+                for claim in COMPOSITION_CLAIMS:
+                    root_pos = positions.get(claim["root_pos"])
+                    if root_pos is None:
+                        continue
+
+                    for head in claim["root_heads"]:
+                        root_str = f"{head}@{root_pos}"
+                        result = tracer.trace_from_prep(prep, cfg, root=root_str)
+                        upstream = extract_upstream(result.paths, head, top_k=args.top_k)
+
+                        upstream_tiers = set()
+                        for u in upstream:
+                            if u["tier"]:
+                                upstream_tiers.add(u["tier"])
+
+                        mode_hit = False
+                        for u in upstream:
+                            if u["tier"] in claim["expected_tiers"]:
+                                for mode in claim["expected_modes"]:
+                                    if u["modes"].get(mode, 0) > 0:
+                                        mode_hit = True
+                                        break
+
+                        comp_results[config].append({
+                            "claim": claim["name"],
+                            "root_head": head,
+                            "root_pos_key": claim["root_pos"],
+                            "root_pos": root_pos,
+                            "upstream": upstream,
+                            "upstream_tiers_found": sorted(upstream_tiers),
+                            "expected_tier_hit": bool(upstream_tiers & claim["expected_tiers"]),
+                            "expected_mode_hit": mode_hit,
+                            "target_prob": result.target_prob,
+                            "positions": positions,
+                        })
+
+        del prep  # release memory
+
+    # Clean empty
+    token_results = {k: v for k, v in token_results.items() if v}
+    comp_results = {k: v for k, v in comp_results.items() if v}
 
     if token_results:
         print_token_summary(token_results)
