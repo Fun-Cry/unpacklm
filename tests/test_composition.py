@@ -120,8 +120,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--cache-dir", default=None)
-    ap.add_argument("--config", default="default",
-                    help="Trace config preset (default, kqv_aligned, etc.)")
+    ap.add_argument("--config", default="k_only_weighted",
+                    help="Trace config preset (k_only_weighted, kqv_aligned, etc.)")
     args = ap.parse_args()
 
     print("Loading GPT-2 small...")

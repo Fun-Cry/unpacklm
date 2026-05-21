@@ -76,7 +76,7 @@ def path_select(paths, root_names, exclude, ratio=0.5):
     return half_max_filter(items, ratio=ratio)
 
 
-def discover_single(tracer, text, target, distractor, config="default",
+def discover_single(tracer, text, target, distractor, config="k_only_weighted",
                     max_tiers=6, ratio=0.5, verbose=True):
     tiers = []
     edges = []
@@ -179,7 +179,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--device", default="cuda:0")
     ap.add_argument("--cache-dir", default=None)
-    ap.add_argument("--config", default="default")
+    ap.add_argument("--config", default="k_only_weighted")
     ap.add_argument("--max-tiers", type=int, default=6)
     ap.add_argument("--ratio", type=float, default=0.5,
                     help="Keep components with |score| >= ratio * top |score|")

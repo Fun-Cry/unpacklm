@@ -60,7 +60,7 @@ def main():
     if len(comp) >= 2:
         print(f"\nComposition: checking upstream scores across configs")
         pairs = [("kqv_weighted", "kqv_l2"), ("kqv_weighted", "kqv_aligned"),
-                 ("default", "k_only_l2")]
+                 ("k_only_weighted", "k_only_l2")]
         for a, b in pairs:
             if a not in comp or b not in comp:
                 continue

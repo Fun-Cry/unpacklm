@@ -36,7 +36,7 @@ TIER_MAP = {
     "Dup": DUP_TOKEN, "Prev": PREV_TOKEN,
 }
 
-ALL_CONFIGS = ["default", "k_only_l2", "k_only_aligned", "kqv_weighted", "kqv_l2", "kqv_aligned"]
+ALL_CONFIGS = ["k_only_weighted", "k_only_l2", "k_only_aligned", "kqv_weighted", "kqv_l2", "kqv_aligned"]
 
 MODE_RE = re.compile(r"\[([KQV])\]")
 

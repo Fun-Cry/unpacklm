@@ -34,7 +34,7 @@ def test_tracer_api(arch_name, model, tokenizer):
 
     for text, target, distractor in PROMPTS:
         result = tracer.trace(text, target=target, distractor=distractor,
-                              config="default")
+                              config="k_only_weighted")
 
         ta = result.token_attribution
         finite = np.isfinite(ta).all()

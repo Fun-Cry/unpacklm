@@ -33,7 +33,7 @@ def main():
     # v2 ran WITHOUT geva (= L2 fallback) → use for "l2" configs
     # v2 kqv_aligned already had outproj fix
     keep = {
-        "default":      ("v3", "default"),       # K-only + geva (weighted)
+        "k_only_weighted":      ("v3", "default"),       # K-only + geva (weighted)
         "k_only_l2":    ("v2", "default"),        # K-only + L2 (v2 had no geva = correct L2)
         "kqv_weighted": ("v3", "kqv_weighted"),   # KQV + geva (weighted)
         "kqv_l2":       ("v2", "kqv_weighted"),   # KQV + L2 (v2 had no geva = correct L2)

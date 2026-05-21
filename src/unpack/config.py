@@ -35,7 +35,7 @@ class TraceConfig:
     branch_weights: Optional[Dict[str, float]] = None
     aligned: bool = False
     mlp_rule: str = "weighted"    # "weighted" or "l2"
-    top_paths_k: int = 2000
+    top_paths_k: int = 20
     path_min_frac: float = 1e-4
 
     @property
@@ -71,6 +71,9 @@ class TraceConfig:
 
 PRESETS = {
     "default": TraceConfig(
+        branches="kqv", mlp_rule="weighted", aligned=True,
+    ),
+    "k_only_weighted": TraceConfig(
         branches="k", mlp_rule="weighted", aligned=False,
     ),
     "k_only_l2": TraceConfig(

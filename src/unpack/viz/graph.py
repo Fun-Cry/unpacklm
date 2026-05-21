@@ -2,14 +2,14 @@
 unpack.viz.graph - Data model for circuit path visualization.
 
 Separates the data model from rendering so the same structure
-can drive SVG output, React components, or D3 visualizations.
+can drive HTML, TikZ, or custom visualizations.
 
 Usage:
     from unpack.viz import CircuitGraph
     
     graph = CircuitGraph.from_model(tracer.adapter)
     graph.add_paths(result.paths[:10])
-    svg = graph.render_svg(tokens=result.tokens)
+    graph.save_html("paths.html")
 """
 
 from __future__ import annotations
@@ -212,22 +212,6 @@ class CircuitGraph:
         }
 
     # ── Rendering ──
-
-    def render_svg(self, width=900, layer_height=50, pos_spacing=140,
-                   margin=60, show_all_layers=False) -> str:
-        """Render paths as an SVG string."""
-        from unpack.viz.render_svg import render_svg
-        return render_svg(
-            self, width=width, layer_height=layer_height,
-            pos_spacing=pos_spacing, margin=margin,
-            show_all_layers=show_all_layers,
-        )
-
-    def save_svg(self, path: str, **kwargs):
-        """Render and save to an SVG file."""
-        svg = self.render_svg(**kwargs)
-        with open(path, "w") as f:
-            f.write(svg)
 
     def render_html(self, width=900, height=None) -> str:
         """Render paths as an interactive HTML string with D3.js.

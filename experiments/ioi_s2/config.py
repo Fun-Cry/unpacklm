@@ -1,6 +1,6 @@
 """Experiment configuration for IOI S2 three-way comparison."""
 
-ALL_CONFIGS = ["default", "k_only_l2", "k_only_aligned", "kqv_weighted", "kqv_l2", "kqv_aligned"]
+ALL_CONFIGS = ["k_only_weighted", "k_only_l2", "k_only_aligned", "kqv_weighted", "kqv_l2", "kqv_aligned"]
 BEST_CONFIG = ["kqv_aligned"]
 
 MODELS = {

@@ -18,7 +18,7 @@ from unpack.core.flow import _run_flow_sweep
 from experiments.circuits.ioi_utils import load_ioi_prompts
 
 
-CONFIGS = ["default", "k_only_l2", "k_only_aligned", "kqv_weighted", "kqv_l2", "kqv_aligned"]
+CONFIGS = ["k_only_weighted", "k_only_l2", "k_only_aligned", "kqv_weighted", "kqv_l2", "kqv_aligned"]
 
 
 def run(model, device, cache_dir, configs, n_prompts, seed, out_dir):
