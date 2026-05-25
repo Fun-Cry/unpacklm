@@ -204,9 +204,13 @@ from unpack.core.prep import _prepare_trace_inputs
 ## Citation
 
 ```bibtex
-@article{chen2026unpack,
-  title={Every Component is a Lookup: Token Attribution and Composition from a Single Decomposition},
-  author={Chen, Po-Kai and van Stein, Niki and Plaat, Aske},
-  year={2026}
+@misc{chen2026componentlookuptokenattribution,
+      title={Every Component is a Lookup: Token Attribution and Composition from a Single Decomposition}, 
+      author={Po-Kai Chen and Niki van Stein and Aske Plaat},
+      year={2026},
+      eprint={2605.23393},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2605.23393}, 
 }
 ```
